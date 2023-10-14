@@ -4,7 +4,7 @@ import asyncio
 import requests
 import aiohttp
 
-from rich.progress import track, Progress, TaskID
+from rich.progress import track, Progress
 
 def requests_no_session(requests_to_make: int) -> None:
     # Start a timer
@@ -45,15 +45,13 @@ def requests_with_session(requests_to_make: int) -> None:
     # Print the time
     print(f'Requests with Session Took   : {end - start:.2f}s')
 
-async def aiohttp_make_request(session: aiohttp.ClientSession, progress: Progress, task_id: TaskID) -> None:
+async def aiohttp_make_request(session: aiohttp.ClientSession) -> None:
     async with session.get('https://schleising.net/football/api/') as response:
         # Check the status code
         if response.status != 200:
             print('Error!')
-            return
         else:
             await response.text()
-            progress.update(task_id, advance=1)
 
 async def aiohttp_with_session(requests_to_make: int) -> None:
     # Start a timer
@@ -62,13 +60,17 @@ async def aiohttp_with_session(requests_to_make: int) -> None:
     # Create a progress bar
     with Progress() as progress:
         task_id = progress.add_task('Making requests', total=requests_to_make)
-        # progress.start()
+
+        # Create a session
         async with aiohttp.ClientSession() as session:
-            # Create the tasks
-            tasks = [asyncio.create_task(aiohttp_make_request(session, progress, task_id)) for _ in range(requests_to_make)]
-            
-            # Wait for the tasks to finish
-            await asyncio.gather(*tasks)
+            # Create a task group
+            async with asyncio.TaskGroup() as task_group:
+                # Create the tasks
+                tasks = [task_group.create_task(aiohttp_make_request(session)) for _ in range(requests_to_make)]
+
+                # Add a done callback to the task group to update the progress bar
+                for task in tasks:
+                    task.add_done_callback(lambda _: progress.advance(task_id))
 
     # Stop the timer
     end = time.perf_counter()
@@ -78,7 +80,7 @@ async def aiohttp_with_session(requests_to_make: int) -> None:
 
 if __name__ == '__main__':
     # Set the number of requests to make
-    requests_to_make = 10
+    requests_to_make = 1000
 
     # Make 1000 requests without a session
     requests_no_session(requests_to_make)
